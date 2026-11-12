@@ -106,7 +106,7 @@ export default function DaybookTable({
 
   // Open modal to add a brand new row manually
   const handleStartAdd = () => {
-    const nextSl = rawData.length + 1;
+    const nextSl = rawData.reduce((m, r) => Math.max(m, r.slNo || 0), 0) + 1;
     const today = new Date();
     const dateStr = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
 
@@ -244,35 +244,36 @@ export default function DaybookTable({
     }
 
     try {
-      await fetch(`/api/sheets/transaction?type=${type}&slNo=${slNo}`, {
+      const response = await fetch(`/api/sheets/transaction?type=${type}&slNo=${slNo}`, {
         method: 'DELETE',
       });
+      const res = await response.json();
+      if (!response.ok) throw new Error(res.error || 'Failed to delete entry');
       onDeleteTransaction(type, slNo);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete error:', err);
-      // Still update UI
-      onDeleteTransaction(type, slNo);
+      window.alert(err.message || 'Delete failed; row kept.');
     }
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-2xl shadow-sm border border-cadet/40 overflow-hidden">
       {/* Table Header Bar */}
-      <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-6 border-b border-cadet/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-gunmetal flex items-center gap-2">
             {isPayment ? (
-              <span className="p-2 rounded-lg bg-rose-50 text-rose-600">
+              <span className="p-2 rounded-lg bg-palepink text-gunmetal border border-palepink-dark">
                 <ArrowUpRight className="w-5 h-5" />
               </span>
             ) : (
-              <span className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+              <span className="p-2 rounded-lg bg-water text-gunmetal border border-water-dark">
                 <ArrowDownLeft className="w-5 h-5" />
               </span>
             )}
             Day - Book ({isPayment ? 'Payments' : 'Receipts'})
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-gunmetal/60 mt-0.5">
             Synchronized with Google Sheets • {filteredData.length} entries • Click <strong>Edit</strong> on any row to modify values
           </p>
         </div>
@@ -280,13 +281,13 @@ export default function DaybookTable({
         <div className="flex flex-wrap items-center gap-3">
           {/* Search Bar */}
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-cadet-dark absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search voucher, item, date..."
-              className="pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44 sm:w-56"
+              className="pl-9 pr-3 py-2 text-xs rounded-lg border border-cadet/60 focus:outline-none focus:ring-2 focus:ring-gunmetal text-gunmetal w-44 sm:w-56"
             />
           </div>
 
@@ -294,9 +295,9 @@ export default function DaybookTable({
           <button
             type="button"
             onClick={handleStartAdd}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-gunmetal hover:bg-gunmetal-light text-white text-xs font-semibold rounded-lg shadow-xs transition"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
+            <PlusCircle className="w-3.5 h-3.5 text-water" />
             Add Entry
           </button>
 
@@ -306,7 +307,7 @@ export default function DaybookTable({
               href={spreadsheetUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg border border-emerald-200 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-water hover:bg-water-dark/30 text-gunmetal text-xs font-semibold rounded-lg border border-cadet transition"
               title="Open full Google Spreadsheet in new tab"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -321,25 +322,25 @@ export default function DaybookTable({
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="bg-slate-700 text-white font-semibold border-b border-slate-600">
-              <th className="py-2.5 px-3 w-14 text-center border-r border-slate-600">Sl. No.</th>
-              <th className="py-2.5 px-3 w-28 border-r border-slate-600">Date</th>
-              <th className="py-2.5 px-4 border-r border-slate-600">Item / Description</th>
-              <th className="py-2.5 px-3 w-24 text-center border-r border-slate-600">
+            <tr className="bg-gunmetal text-water font-semibold border-b border-gunmetal-light">
+              <th className="py-2.5 px-3 w-14 text-center border-r border-gunmetal-light">Sl. No.</th>
+              <th className="py-2.5 px-3 w-28 border-r border-gunmetal-light">Date</th>
+              <th className="py-2.5 px-4 border-r border-gunmetal-light">Item / Description</th>
+              <th className="py-2.5 px-3 w-24 text-center border-r border-gunmetal-light">
                 {isPayment ? 'Voucher No.' : 'Receipt no.'}
               </th>
-              <th className="py-2.5 px-4 w-32 text-right border-r border-slate-600">Amount (₹)</th>
-              <th className="py-2.5 px-3 w-32 border-r border-slate-600">Category</th>
-              {isPayment && <th className="py-2.5 px-3 w-28 border-r border-slate-600">Remarks</th>}
+              <th className="py-2.5 px-4 w-32 text-right border-r border-gunmetal-light">Amount (₹)</th>
+              <th className="py-2.5 px-3 w-32 border-r border-gunmetal-light">Category</th>
+              {isPayment && <th className="py-2.5 px-3 w-28 border-r border-gunmetal-light">Remarks</th>}
               <th className="py-2.5 px-3 w-24 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 font-sans">
+          <tbody className="divide-y divide-cadet/20 font-sans">
             {filteredData.length === 0 ? (
               <tr>
                 <td
                   colSpan={isPayment ? 8 : 7}
-                  className="py-12 text-center text-slate-400 text-sm italic"
+                  className="py-12 text-center text-gunmetal/50 text-sm italic"
                 >
                   No transactions found matching your filter.
                 </td>
@@ -354,39 +355,39 @@ export default function DaybookTable({
                 return (
                   <tr
                     key={sl}
-                    className="hover:bg-indigo-50/40 transition-colors border-b border-slate-100 group"
+                    className="hover:bg-water/20 transition-colors border-b border-cadet/20 group"
                   >
-                    <td className="py-2.5 px-3 text-center text-slate-500 font-mono border-r border-slate-100 font-medium">
+                    <td className="py-2.5 px-3 text-center text-gunmetal/70 font-mono border-r border-cadet/20 font-medium">
                       {sl}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-700 whitespace-nowrap border-r border-slate-100">
+                    <td className="py-2.5 px-3 text-gunmetal whitespace-nowrap border-r border-cadet/20">
                       {row.date}
                     </td>
-                    <td className="py-2.5 px-4 text-slate-900 font-medium border-r border-slate-100">
+                    <td className="py-2.5 px-4 text-gunmetal font-medium border-r border-cadet/20">
                       {row.item}
                     </td>
-                    <td className="py-2.5 px-3 text-center text-slate-700 font-mono border-r border-slate-100">
+                    <td className="py-2.5 px-3 text-center text-gunmetal/80 font-mono border-r border-cadet/20">
                       {ref}
                     </td>
-                    <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 border-r border-slate-100">
+                    <td className="py-2.5 px-4 text-right font-mono font-semibold text-gunmetal border-r border-cadet/20">
                       {Number(row.amount).toLocaleString('en-IN', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600 border-r border-slate-100">
-                      <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] truncate max-w-[130px]">
+                    <td className="py-2.5 px-3 text-gunmetal/80 border-r border-cadet/20">
+                      <span className="inline-block px-2 py-0.5 rounded bg-cadet/20 text-gunmetal text-[11px] truncate max-w-[130px] border border-cadet/30">
                         {row.category || (isPayment ? 'Miscellaneous' : 'Other Receipts')}
                       </span>
                     </td>
                     {isPayment && (
-                      <td className="py-2.5 px-3 text-slate-600 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-gunmetal/80 border-r border-cadet/20">
                         {row.remarks && row.remarks !== 'Nil' ? (
-                          <span className="inline-block px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-medium">
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-palepink/60 text-gunmetal text-[10px] font-medium border border-palepink-dark/30">
                             {row.remarks}
                           </span>
                         ) : (
-                          <span className="text-slate-400">Nil</span>
+                          <span className="text-cadet-dark">Nil</span>
                         )}
                       </td>
                     )}
@@ -397,7 +398,7 @@ export default function DaybookTable({
                           type="button"
                           onClick={() => handleStartEdit(row, idx)}
                           title="Edit this entry"
-                          className="p-1.5 rounded-md text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 transition border border-transparent hover:border-indigo-200"
+                          className="p-1.5 rounded-md text-gunmetal hover:text-gunmetal-light hover:bg-water/60 transition border border-transparent hover:border-cadet"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -405,7 +406,7 @@ export default function DaybookTable({
                           type="button"
                           onClick={() => handleDeleteRow(sl, row.item)}
                           title="Delete this entry"
-                          className="p-1.5 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition border border-transparent hover:border-rose-200"
+                          className="p-1.5 rounded-md text-red-600 hover:text-red-800 hover:bg-palepink/50 transition border border-transparent hover:border-palepink-dark"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -418,14 +419,14 @@ export default function DaybookTable({
           </tbody>
           {filteredData.length > 0 && (
             <tfoot>
-              <tr className="bg-amber-100/70 font-bold text-slate-900 border-t-2 border-slate-300">
+              <tr className="bg-water/80 font-bold text-gunmetal border-t-2 border-cadet">
                 <td
                   colSpan={isPayment ? 4 : 3}
                   className="py-2.5 px-4 text-right uppercase tracking-wider text-xs"
                 >
                   Total {isPayment ? 'Payments' : 'Receipts'}
                 </td>
-                <td className="py-2.5 px-4 text-right font-mono text-sm text-indigo-950 font-extrabold border-r border-amber-200">
+                <td className="py-2.5 px-4 text-right font-mono text-sm text-gunmetal font-extrabold border-r border-cadet">
                   {totalAmount.toLocaleString('en-IN', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
@@ -441,20 +442,20 @@ export default function DaybookTable({
       {/* Edit / Add Modal Drawer */}
       {editingItem && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-cadet/50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 bg-slate-900 text-white flex items-center justify-between">
+            <div className="p-5 border-b border-gunmetal-light bg-gunmetal text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-indigo-600 text-white">
+                <div className="p-2 rounded-lg bg-white/10 text-water border border-white/10">
                   <Edit3 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base">
+                  <h3 className="font-bold text-base text-white">
                     {editingItem.isNew
                       ? `Add New ${isPayment ? 'Payment' : 'Receipt'}`
                       : `Edit ${isPayment ? 'Payment' : 'Receipt'} #${editingItem.slNo}`}
                   </h3>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-cadet">
                     Changes will sync automatically to Google Sheets
                   </p>
                 </div>
@@ -462,7 +463,7 @@ export default function DaybookTable({
               <button
                 type="button"
                 onClick={() => setEditingItem(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"
+                className="p-1 rounded-lg text-cadet hover:text-white hover:bg-white/10 transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -474,19 +475,19 @@ export default function DaybookTable({
                 <div
                   className={`p-3 rounded-lg flex items-center gap-2 border ${
                     feedback.type === 'error'
-                      ? 'bg-rose-50 border-rose-200 text-rose-800'
-                      : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      ? 'bg-palepink border-palepink-dark text-gunmetal'
+                      : 'bg-water border-cadet text-gunmetal'
                   }`}
                 >
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{feedback.message}</span>
+                  <AlertCircle className="w-4 h-4 shrink-0 text-gunmetal" />
+                  <span className="font-medium">{feedback.message}</span>
                 </div>
               )}
 
               {/* Sl. No & Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  <label className="block font-semibold text-gunmetal uppercase mb-1">
                     Sl. No.
                   </label>
                   <input
@@ -499,11 +500,11 @@ export default function DaybookTable({
                         slNo: parseInt(e.target.value, 10) || 1,
                       })
                     }
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-slate-50 font-mono font-medium text-slate-800 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-cadet/50 bg-[#f5f7fa] font-mono font-medium text-gunmetal focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  <label className="block font-semibold text-gunmetal uppercase mb-1">
                     Date
                   </label>
                   <input
@@ -513,14 +514,14 @@ export default function DaybookTable({
                       setEditingItem({ ...editingItem, date: e.target.value })
                     }
                     placeholder="DD/MM/YYYY"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-cadet/60 font-medium text-gunmetal focus:ring-2 focus:ring-gunmetal focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* Item / Description */}
               <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                <label className="block font-semibold text-gunmetal uppercase mb-1">
                   Item / Description
                 </label>
                 <input
@@ -530,14 +531,14 @@ export default function DaybookTable({
                     setEditingItem({ ...editingItem, item: e.target.value })
                   }
                   placeholder="e.g. Snacks for Inauguration meeting"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg border border-cadet/60 font-medium text-gunmetal text-sm focus:ring-2 focus:ring-gunmetal focus:outline-none"
                 />
               </div>
 
               {/* Voucher/Receipt No & Amount */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  <label className="block font-semibold text-gunmetal uppercase mb-1">
                     {isPayment ? 'Voucher No.' : 'Receipt no.'}
                   </label>
                   <input
@@ -549,11 +550,11 @@ export default function DaybookTable({
                         voucherOrReceiptNo: e.target.value,
                       })
                     }
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-cadet/60 font-mono text-gunmetal focus:ring-2 focus:ring-gunmetal focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  <label className="block font-semibold text-gunmetal uppercase mb-1">
                     Amount (₹)
                   </label>
                   <input
@@ -566,14 +567,14 @@ export default function DaybookTable({
                         amount: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg border border-cadet/60 font-mono font-bold text-gunmetal text-sm focus:ring-2 focus:ring-gunmetal focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* Category (Ledger Head) */}
               <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                <label className="block font-semibold text-gunmetal uppercase mb-1">
                   Category (Ledger Head)
                 </label>
                 <select
@@ -581,7 +582,7 @@ export default function DaybookTable({
                   onChange={(e) =>
                     setEditingItem({ ...editingItem, category: e.target.value })
                   }
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg border border-cadet/60 bg-white font-medium text-gunmetal focus:ring-2 focus:ring-gunmetal focus:outline-none"
                 >
                   {currentCategories.map((cat) => (
                     <option key={cat} value={cat}>
@@ -593,7 +594,7 @@ export default function DaybookTable({
 
               {/* Remarks */}
               <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                <label className="block font-semibold text-gunmetal uppercase mb-1">
                   Remarks / Notes
                 </label>
                 <input
@@ -603,16 +604,16 @@ export default function DaybookTable({
                     setEditingItem({ ...editingItem, remarks: e.target.value })
                   }
                   placeholder="e.g. Nil, Snack Receipt, Petrol, Bank"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg border border-cadet/60 text-gunmetal focus:ring-2 focus:ring-gunmetal focus:outline-none"
                 />
               </div>
 
               {/* Buttons */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <div className="pt-4 border-t border-cadet/30 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setEditingItem(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold transition"
+                  className="px-4 py-2 rounded-lg border border-cadet text-gunmetal hover:bg-cadet/20 font-semibold transition"
                 >
                   Cancel
                 </button>
@@ -620,16 +621,16 @@ export default function DaybookTable({
                   type="button"
                   onClick={handleSaveModal}
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold flex items-center gap-1.5 shadow-xs transition"
+                  className="px-5 py-2 rounded-lg bg-gunmetal hover:bg-gunmetal-light disabled:bg-cadet/40 text-white font-semibold flex items-center gap-1.5 shadow-xs transition"
                 >
                   {isSubmitting ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-water" />
                       Saving...
                     </>
                   ) : (
                     <>
-                      <Check className="w-3.5 h-3.5" />
+                      <Check className="w-3.5 h-3.5 text-water" />
                       Save Changes
                     </>
                   )}

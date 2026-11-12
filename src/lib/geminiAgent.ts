@@ -55,18 +55,24 @@ export async function extractTransactionWithAgent(params: {
 
   // Fallback demo mode if API key is not yet set up
   if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-    return generateDemoExtraction(params.textPrompt || 'Demo voucher');
+    if (!params.textPrompt?.trim()) {
+      throw new Error(
+        'GEMINI_API_KEY is not configured, so images cannot be read. Add the key to .env.local or type a text description.'
+      );
+    }
+    return generateDemoExtraction(params.textPrompt);
   }
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Use gemini-1.5-flash which is fast and supports multimodal vision
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-      },
-    });
+    // Primary model, then optional comma-separated fallbacks (GEMINI_FALLBACK_MODELS)
+    const models = [
+      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      ...(process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.5-flash,gemini-flash-latest')
+        .split(',')
+        .map((m) => m.trim())
+        .filter(Boolean),
+    ];
 
     const parts: any[] = [{ text: SYSTEM_PROMPT }];
 
@@ -90,8 +96,30 @@ export async function extractTransactionWithAgent(params: {
       });
     }
 
-    const result = await model.generateContent(parts);
-    const responseText = result.response.text();
+    const isTransient = (e: any) => /\b(503|429|500|504)\b|overloaded|high demand|unavailable|timeout|timed out|abort/i.test(String(e?.message));
+    let responseText = '';
+    let lastErr: any;
+    outer: for (const name of models) {
+      const model = genAI.getGenerativeModel(
+        {
+          model: name,
+          generationConfig: { responseMimeType: 'application/json' },
+        },
+        { timeout: 25000 } // some models hang under load; fail over instead of waiting
+      );
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await model.generateContent(parts);
+          responseText = result.response.text();
+          break outer;
+        } catch (e) {
+          lastErr = e;
+          if (!isTransient(e)) break; // e.g. 404/400: try next model
+          await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt)); // 1s then move on
+        }
+      }
+    }
+    if (!responseText) throw lastErr || new Error('No response from model');
     const parsed = JSON.parse(responseText);
 
     return {
@@ -106,9 +134,10 @@ export async function extractTransactionWithAgent(params: {
       reasoning: parsed.reasoning || 'Extracted via Gemini Vision',
     };
   } catch (error) {
-    console.error('Gemini Vision extraction failed, falling back:', error);
-    // Fallback to text heuristic parser
-    return generateDemoExtraction(params.textPrompt || 'Scanned Receipt');
+    console.error('Gemini extraction failed:', error);
+    throw new Error(
+      `AI extraction failed: ${(error as Error)?.message || 'unknown error'}. Please retry or enter the entry manually.`
+    );
   }
 }
 
@@ -140,8 +169,8 @@ function generateDemoExtraction(text: string): ExtractedTransaction {
     amount: amount || 1500,
     category,
     remarks: 'Auto-detected',
-    confidence: 0.85,
-    reasoning: `Categorized as ${category} based on detected keywords.`,
+    confidence: 0.5,
+    reasoning: `DEMO MODE (no Gemini key): guessed ${category} from keywords. Verify every field.`,
   };
 }
 

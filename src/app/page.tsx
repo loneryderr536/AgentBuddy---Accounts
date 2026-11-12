@@ -25,6 +25,7 @@ import {
   PaymentEntry,
   ReceiptEntry,
   ExtractedTransaction,
+  OPENING_BANK_BALANCE,
 } from '@/types/accounting';
 
 // Initial sample data faithfully matching the user's attached document
@@ -102,6 +103,7 @@ export default function HomePage() {
   const [isConfigGuideOpen, setIsConfigGuideOpen] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | undefined>(undefined);
 
   // Fetch real Google Sheets data on mount
@@ -114,25 +116,40 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/sheets/data');
       const data = await res.json();
-      if (data.isConfigured) {
+      if (!res.ok || data.error) {
+        setSyncError(data.error || 'Could not read Google Sheets');
+      } else if (data.isConfigured) {
         setIsConfigured(true);
-        if (data.payments && data.payments.length > 0) setPayments(data.payments);
-        if (data.receipts && data.receipts.length > 0) setReceipts(data.receipts);
+        setSyncError(null);
+        setSpreadsheetUrl(data.spreadsheetUrl);
+        // Live sheet is the source of truth, even when empty (never mix in demo data)
+        setPayments(data.payments || []);
+        setReceipts(data.receipts || []);
       }
     } catch (e) {
+      setSyncError('Could not reach the server');
       console.warn('Could not connect to live sheets:', e);
     } finally {
       setIsSyncing(false);
     }
   };
 
+  const nextSl = (rows: { slNo?: number }[]) =>
+    rows.reduce((m, r) => Math.max(m, r.slNo || 0), 0) + 1;
+
   const handleTransactionSaved = (tx: ExtractedTransaction) => {
+    if (isConfigured) {
+      // Server assigns Sl. No.; reload so local rows match the sheet
+      fetchSheetsData();
+      setActiveTab(tx.type === 'PAYMENT' ? 'daybook-payments' : 'daybook-receipts');
+      return;
+    }
     if (tx.type === 'PAYMENT') {
       const newEntry: PaymentEntry = {
-        slNo: payments.length + 1,
+        slNo: nextSl(payments),
         date: tx.date,
         item: tx.item,
-        voucherNo: tx.voucherOrReceiptNo === 'auto' ? payments.length + 1 : tx.voucherOrReceiptNo,
+        voucherNo: tx.voucherOrReceiptNo === 'auto' ? nextSl(payments) : tx.voucherOrReceiptNo,
         amount: tx.amount,
         category: (tx.category as any) || 'Miscellaneous',
         remarks: tx.remarks,
@@ -141,10 +158,10 @@ export default function HomePage() {
       setActiveTab('daybook-payments');
     } else {
       const newEntry: ReceiptEntry = {
-        slNo: receipts.length + 1,
+        slNo: nextSl(receipts),
         date: tx.date,
         item: tx.item,
-        receiptNo: tx.voucherOrReceiptNo === 'auto' ? receipts.length + 1 : tx.voucherOrReceiptNo,
+        receiptNo: tx.voucherOrReceiptNo === 'auto' ? nextSl(receipts) : tx.voucherOrReceiptNo,
         amount: tx.amount,
         category: (tx.category as any) || 'Donation',
         remarks: tx.remarks,
@@ -190,25 +207,25 @@ export default function HomePage() {
 
   const totalPayments = payments.reduce((acc, curr) => acc + (curr.amount || 0), 0);
   const totalReceipts = receipts.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-  const netClosingBalance = 103475.35 + totalReceipts - totalPayments;
+  const netClosingBalance = OPENING_BANK_BALANCE + totalReceipts - totalPayments;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-16">
+    <div className="min-h-screen bg-[#f5f7fa] text-gunmetal pb-16">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-cadet/30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md font-extrabold text-lg">
+            <div className="w-10 h-10 rounded-xl bg-gunmetal text-water flex items-center justify-center shadow-md font-extrabold text-lg border border-gunmetal-light">
               AB
             </div>
             <div>
-              <h1 className="font-extrabold text-slate-900 text-base leading-tight flex items-center gap-2">
+              <h1 className="font-extrabold text-gunmetal text-base leading-tight flex items-center gap-2">
                 AgentBuddy Accounting
-                <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold text-[10px] border border-indigo-200">
+                <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-water text-gunmetal font-semibold text-[10px] border border-cadet/40">
                   Google Sheets Agent
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-gunmetal/60">
                 Daybook • Ledger • Account Statement
               </p>
             </div>
@@ -218,15 +235,15 @@ export default function HomePage() {
             {/* Sync Badge */}
             <button
               onClick={() => setIsConfigGuideOpen(true)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition ${
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition ${
                 isConfigured
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                  ? 'bg-water text-gunmetal border-cadet hover:bg-water-dark/40'
+                  : 'bg-palepink text-gunmetal border-palepink-dark/60 hover:bg-palepink-dark/40'
               }`}
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isConfigured ? 'bg-emerald-500' : 'bg-amber-500'
+                  isConfigured ? 'bg-gunmetal' : 'bg-red-500'
                 }`}
               />
               <span className="hidden md:inline">
@@ -239,7 +256,7 @@ export default function HomePage() {
             <button
               onClick={fetchSheetsData}
               title="Refresh Sheets Data"
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+              className="p-2 text-gunmetal/70 hover:text-gunmetal hover:bg-cadet/20 rounded-lg transition"
             >
               <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             </button>
@@ -249,57 +266,68 @@ export default function HomePage() {
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+        {!isConfigured && (
+          <div className="rounded-xl border border-palepink-dark/60 bg-palepink px-4 py-2 text-xs font-medium text-gunmetal">
+            Demo mode: showing sample data. Changes are not saved to Google Sheets.
+          </div>
+        )}
+        {syncError && (
+          <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-xs font-medium text-red-700">
+            Google Sheets sync problem: {syncError}
+          </div>
+        )}
+
         {/* Quick Metric Pills */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div className="bg-white p-4 rounded-xl border border-cadet/40 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs text-slate-500 font-medium">Daybook Receipts</span>
-              <div className="text-lg font-bold font-mono text-emerald-600 mt-0.5">
+              <span className="text-xs text-gunmetal/60 font-medium">Daybook Receipts</span>
+              <div className="text-lg font-bold font-mono text-gunmetal mt-0.5">
                 ₹{totalReceipts.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
             </div>
-            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-water text-gunmetal flex items-center justify-center border border-water-dark">
               <ArrowDownLeft className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div className="bg-white p-4 rounded-xl border border-cadet/40 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs text-slate-500 font-medium">Daybook Payments</span>
-              <div className="text-lg font-bold font-mono text-rose-600 mt-0.5">
+              <span className="text-xs text-gunmetal/60 font-medium">Daybook Payments</span>
+              <div className="text-lg font-bold font-mono text-gunmetal mt-0.5">
                 ₹{totalPayments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
             </div>
-            <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-palepink text-gunmetal flex items-center justify-center border border-palepink-dark">
               <ArrowUpRight className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div className="bg-white p-4 rounded-xl border border-cadet/40 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs text-slate-500 font-medium">Closing Balance</span>
-              <div className="text-lg font-bold font-mono text-indigo-700 mt-0.5">
+              <span className="text-xs text-gunmetal/60 font-medium">Closing Balance</span>
+              <div className="text-lg font-bold font-mono text-gunmetal mt-0.5">
                 ₹{netClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
             </div>
-            <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-gunmetal text-water flex items-center justify-center border border-gunmetal-light">
               <Scale className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="border-b border-slate-200 overflow-x-auto">
-          <nav className="flex space-x-2 sm:space-x-4 min-w-max pb-2">
+        <div className="border-b border-cadet/40 overflow-x-auto">
+          <nav className="flex space-x-2 sm:space-x-3 min-w-max pb-2">
             <button
               onClick={() => setActiveTab('capture')}
               className={`px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition ${
                 activeTab === 'capture'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-gunmetal text-white shadow-sm'
+                  : 'text-gunmetal/70 hover:text-gunmetal hover:bg-cadet/20'
               }`}
             >
-              <Camera className="w-4 h-4" />
+              <Camera className="w-4 h-4 text-water" />
               Capture Voucher / OCR
             </button>
 
@@ -307,11 +335,11 @@ export default function HomePage() {
               onClick={() => setActiveTab('daybook-payments')}
               className={`px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition ${
                 activeTab === 'daybook-payments'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-gunmetal text-white shadow-sm'
+                  : 'text-gunmetal/70 hover:text-gunmetal hover:bg-cadet/20'
               }`}
             >
-              <ArrowUpRight className="w-4 h-4 text-rose-500" />
+              <ArrowUpRight className="w-4 h-4 text-palepink" />
               Daybook - Payments ({payments.length})
             </button>
 
@@ -319,11 +347,11 @@ export default function HomePage() {
               onClick={() => setActiveTab('daybook-receipts')}
               className={`px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition ${
                 activeTab === 'daybook-receipts'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-gunmetal text-white shadow-sm'
+                  : 'text-gunmetal/70 hover:text-gunmetal hover:bg-cadet/20'
               }`}
             >
-              <ArrowDownLeft className="w-4 h-4 text-emerald-500" />
+              <ArrowDownLeft className="w-4 h-4 text-water" />
               Daybook - Receipts ({receipts.length})
             </button>
 
@@ -331,11 +359,11 @@ export default function HomePage() {
               onClick={() => setActiveTab('ledger')}
               className={`px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition ${
                 activeTab === 'ledger'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-gunmetal text-white shadow-sm'
+                  : 'text-gunmetal/70 hover:text-gunmetal hover:bg-cadet/20'
               }`}
             >
-              <Layers className="w-4 h-4" />
+              <Layers className="w-4 h-4 text-cadet" />
               Ledger Head Groups
             </button>
 
@@ -343,11 +371,11 @@ export default function HomePage() {
               onClick={() => setActiveTab('statement')}
               className={`px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition ${
                 activeTab === 'statement'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-gunmetal text-white shadow-sm'
+                  : 'text-gunmetal/70 hover:text-gunmetal hover:bg-cadet/20'
               }`}
             >
-              <Scale className="w-4 h-4" />
+              <Scale className="w-4 h-4 text-water" />
               Account Statement
             </button>
           </nav>

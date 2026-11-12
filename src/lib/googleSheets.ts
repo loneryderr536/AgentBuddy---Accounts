@@ -43,7 +43,37 @@ function getGoogleAuth() {
   return null;
 }
 
+
+// ---- Apps Script web-app backend (alternative to a service account) ----
+function appsScriptConfig() {
+  const url = process.env.APPS_SCRIPT_URL;
+  const token = process.env.APPS_SCRIPT_TOKEN;
+  return url && token ? { url, token } : null;
+}
+
+async function callAppsScript(action: string, payload: Record<string, unknown> = {}) {
+  const cfg = appsScriptConfig();
+  if (!cfg) throw new Error('APPS_SCRIPT_URL / APPS_SCRIPT_TOKEN are not set.');
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight semantics
+    body: JSON.stringify({ action, token: cfg.token, ...payload }),
+    redirect: 'follow',
+    signal: AbortSignal.timeout(30000),
+  });
+  const text = await res.text();
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Apps Script did not return JSON. Check the deployment access is "Anyone" and the URL ends in /exec.');
+  }
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 export function isGoogleSheetsConfigured(): boolean {
+  if (appsScriptConfig()) return true;
   return !!(
     process.env.GOOGLE_SHEETS_SPREADSHEET_ID &&
     (process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
@@ -63,6 +93,7 @@ const SHEET_NAMES = {
  * Initialize all 5 sheets with required headers and formatting if not already present.
  */
 export async function initializeSpreadsheet() {
+  if (appsScriptConfig()) return callAppsScript('init');
   const auth = getGoogleAuth();
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -182,6 +213,7 @@ export async function initializeSpreadsheet() {
  * Record a new transaction into Daybook and Ledger
  */
 export async function addTransaction(transaction: ExtractedTransaction) {
+  if (appsScriptConfig()) return callAppsScript('add', { tx: transaction });
   const auth = getGoogleAuth();
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -199,8 +231,11 @@ export async function addTransaction(transaction: ExtractedTransaction) {
     range: `'${targetSheet}'!A3:G`,
   });
 
-  const rowCount = existingRows.data.values?.length || 0;
-  const slNo = rowCount + 1;
+  const slNo =
+    (existingRows.data.values || []).reduce(
+      (max, r) => Math.max(max, Number(r[0]) || 0),
+      0
+    ) + 1;
 
   // If voucher/receipt no is empty or auto, assign next sequential number
   let refNo = transaction.voucherOrReceiptNo;
@@ -245,6 +280,7 @@ export async function addTransaction(transaction: ExtractedTransaction) {
  * Update an existing transaction in Daybook
  */
 export async function updateTransaction(payload: UpdateTransactionPayload) {
+  if (appsScriptConfig()) return callAppsScript('update', { tx: payload });
   const auth = getGoogleAuth();
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -272,7 +308,10 @@ export async function updateTransaction(payload: UpdateTransactionPayload) {
     }
   }
 
-  const targetRowNumber = foundRowIndex > 0 ? foundRowIndex : payload.slNo + 2;
+  if (foundRowIndex < 0) {
+    throw new Error(`Row #${payload.slNo} was not found in ${targetSheet}. Refresh and try again.`);
+  }
+  const targetRowNumber = foundRowIndex;
 
   const updatedValues = [
     payload.slNo,
@@ -305,6 +344,7 @@ export async function updateTransaction(payload: UpdateTransactionPayload) {
  * Delete a transaction by Sl. No.
  */
 export async function deleteTransaction(type: 'PAYMENT' | 'RECEIPT', slNo: number) {
+  if (appsScriptConfig()) return callAppsScript('delete', { type, slNo });
   const auth = getGoogleAuth();
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -332,7 +372,10 @@ export async function deleteTransaction(type: 'PAYMENT' | 'RECEIPT', slNo: numbe
     }
   }
 
-  const targetRowNumber = foundRowIndex > 0 ? foundRowIndex : slNo + 2;
+  if (foundRowIndex < 0) {
+    throw new Error(`Row #${slNo} was not found in ${targetSheet}. Refresh and try again.`);
+  }
+  const targetRowNumber = foundRowIndex;
 
   // Clear that row
   await sheets.spreadsheets.values.clear({
@@ -388,6 +431,14 @@ async function syncLedgerEntry(
  * Fetch recent records from Daybook Payments and Daybook Receipts
  */
 export async function getRecentTransactions() {
+  if (appsScriptConfig()) {
+    try {
+      const d = await callAppsScript('list');
+      return { payments: d.payments, receipts: d.receipts, isConfigured: true, spreadsheetUrl: d.spreadsheetUrl as string };
+    } catch (err) {
+      return { payments: [], receipts: [], isConfigured: true, spreadsheetUrl: undefined, error: (err as Error).message };
+    }
+  }
   const auth = getGoogleAuth();
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -401,15 +452,15 @@ export async function getRecentTransactions() {
     const [paymentsRes, receiptsRes] = await Promise.all([
       sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `'${SHEET_NAMES.DAYBOOK_PAYMENTS}'!A3:G100`,
+        range: `'${SHEET_NAMES.DAYBOOK_PAYMENTS}'!A3:G`,
       }),
       sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `'${SHEET_NAMES.DAYBOOK_RECEIPTS}'!A3:G100`,
+        range: `'${SHEET_NAMES.DAYBOOK_RECEIPTS}'!A3:G`,
       }),
     ]);
 
-    const payments = (paymentsRes.data.values || []).map((row) => ({
+    const payments = (paymentsRes.data.values || []).filter((row) => row[0] || row[2]).map((row) => ({
       slNo: Number(row[0]) || 0,
       date: row[1] || '',
       item: row[2] || '',
@@ -419,7 +470,7 @@ export async function getRecentTransactions() {
       category: row[6] || 'Miscellaneous',
     }));
 
-    const receipts = (receiptsRes.data.values || []).map((row) => ({
+    const receipts = (receiptsRes.data.values || []).filter((row) => row[0] || row[2]).map((row) => ({
       slNo: Number(row[0]) || 0,
       date: row[1] || '',
       item: row[2] || '',
@@ -429,9 +480,20 @@ export async function getRecentTransactions() {
       category: row[6] || 'Donation',
     }));
 
-    return { payments, receipts, isConfigured: true };
+    return {
+      payments,
+      receipts,
+      isConfigured: true,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
+    };
   } catch (err) {
     console.error('Error fetching sheets data:', err);
-    return { payments: [], receipts: [], isConfigured: true, error: (err as any).message };
+    return {
+      payments: [],
+      receipts: [],
+      isConfigured: true,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
+      error: (err as any).message as string,
+    };
   }
 }

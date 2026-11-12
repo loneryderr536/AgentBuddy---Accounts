@@ -106,3 +106,10 @@ docker run -p 3000:3000 \
 3. **One-Click Sheet Init**:
    - In the AgentBuddy web interface, click **Sheets Connected / Demo** badge and choose **Initialize Spreadsheet**. It automatically creates and styles all 5 sheets!
 
+
+## Apps Script setup (no service account / private key needed)
+1. Open your Google Sheet → Extensions → Apps Script. Paste `apps-script/Code.gs` over the default file.
+2. Project Settings (gear) → Script Properties → add `API_TOKEN` = a long random string.
+3. Deploy → New deployment → type **Web app** → Execute as **Me**, Who has access **Anyone** → Deploy → authorize → copy the `/exec` URL.
+4. In `.env` set `APPS_SCRIPT_URL=<that /exec URL>` and `APPS_SCRIPT_TOKEN=<same string as API_TOKEN>`; restart `npm run dev`.
+5. After editing the script later, use Deploy → Manage deployments → Edit → New version (the URL stays the same).

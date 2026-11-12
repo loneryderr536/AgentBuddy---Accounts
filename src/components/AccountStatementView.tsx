@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Landmark, Wallet, Scale, ArrowUpRight, ArrowDownLeft, Edit3, Check, X } from 'lucide-react';
-import { PaymentEntry, ReceiptEntry } from '@/types/accounting';
+import { PaymentEntry, ReceiptEntry, OPENING_BANK_BALANCE } from '@/types/accounting';
 
 interface AccountStatementViewProps {
   payments: PaymentEntry[];
@@ -15,7 +15,7 @@ export default function AccountStatementView({
 }: AccountStatementViewProps) {
   // Opening balance state
   const [openingBankBudget, setOpeningBankBudget] = useState(103475);
-  const [openingBankActual, setOpeningBankActual] = useState(103475.35);
+  const [openingBankActual, setOpeningBankActual] = useState(OPENING_BANK_BALANCE);
   const [openingCashBudget, setOpeningCashBudget] = useState(0);
   const [openingCashActual, setOpeningCashActual] = useState(0);
   const [closingCashInHand, setClosingCashInHand] = useState(6408);

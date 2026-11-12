@@ -112,3 +112,6 @@ export interface SheetsSyncResult {
   sheetUrl?: string;
   rowInserted?: number;
 }
+
+// Opening bank balance (actual) — single source of truth until it is stored in the sheet.
+export const OPENING_BANK_BALANCE = 103475.35;
